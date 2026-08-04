@@ -1,0 +1,436 @@
+# =============================================================================
+#  CipherElite Userbot Plugin - Personal Assistant PM Manager
+#
+#  Plugin Name:    pmpermit
+#  Version:        2.0.0
+#  Author:         CipherElite Dev (@rishabhops)
+#  Repository:     https://github.com/rishabhops/CipherElite
+#
+#  LICENSE:        MIT
+# =============================================================================
+
+import os
+import json
+import random
+import asyncio
+import logging
+from datetime import datetime
+from pathlib import Path
+
+import google.generativeai as genai
+from telethon import events, functions
+from utils.utils import CipherElite
+from utils.decorators import rishabh
+from plugins.bot import add_handler
+from config.config import Config
+from DB.database import db_get, db_set, db_push, db_pull, USE_MONGO
+
+VERSION = "2.0.0"
+CATEGORY = "utilities"
+
+DEFAULT_PMPERMIT_PIC = Config.DEFAULT_PMPERMIT_PIC
+LOG_CHAT_ID = Config.LOG_CHAT_ID
+
+COLLECTION = "pmpermit_db"
+
+
+class PersonalAssistant:
+    def __init__(self, ai_config):
+        self.ai_config = ai_config
+        self.data = {
+            "config": {
+                "alive_name": os.environ.get("ALIVE_NAME", "Rishabh"),
+                "assistant_name": os.environ.get("ASSISTANT_NAME", "CipherAI"),
+                "pmpermit_pic": os.environ.get("PMPERMIT_PIC", DEFAULT_PMPERMIT_PIC),
+                "use_pic": True,
+                "max_warnings": int(os.environ.get("MAX_WARNINGS", 5)),
+                "pmpermit_enabled": True,
+            },
+            "users": {},
+            "warnings": {},
+            "approved_users": [],
+            "user_states": {},
+        }
+        self.ai_sessions = {}
+        self.model = None
+
+        self._load_sync()
+        self._init_ai()
+
+        cfg = self.data["config"]
+        if not cfg.get("pmpermit_pic"):
+            cfg["pmpermit_pic"] = DEFAULT_PMPERMIT_PIC
+            self._save_sync()
+
+    def _init_ai(self):
+        api_key = self.ai_config.get_api_key()
+        if not api_key:
+            self.model = None
+            return False
+
+        try:
+            genai.configure(api_key=api_key)
+            system_instruction = (
+                f"You are an AI gatekeeper named {self.data['config']['assistant_name']} "
+                f"managing the Telegram inbox for {self.data['config']['alive_name']}. "
+                "Ask the user politely why they are reaching out. "
+                "If they provide a valid reason, tell them you will notify the owner. "
+                "Keep responses strictly under 40 words."
+            )
+            self.model = genai.GenerativeModel(
+                "gemini-2.5-flash",
+                system_instruction=system_instruction,
+            )
+            return True
+        except Exception as e:
+            logging.error(f"Failed to initialize AI Gatekeeper: {e}")
+            self.model = None
+            return False
+
+    def _load_sync(self):
+        try:
+            if not USE_MONGO:
+                DB_DIR = Path(__file__).parent.parent / "DB"
+                DB_DIR.mkdir(exist_ok=True)
+                DB_FILE = DB_DIR / "pmpermit_db.json"
+                if DB_FILE.exists():
+                    with DB_FILE.open("r", encoding="utf-8") as f:
+                        on_disk = json.load(f)
+                    self._merge_data(on_disk)
+            else:
+                try:
+                    import pymongo
+                    from config.config import Config
+                    client = pymongo.MongoClient(Config.MONGO_URI)
+                    db = client.get_database('cipherelite')
+                    col = db[COLLECTION]
+                    doc = col.find_one({"_id": COLLECTION})
+                    if doc:
+                        doc.pop("_id", None)
+                        self._merge_data(doc)
+                    client.close()
+                except Exception as e:
+                    logging.error(f"MongoDB load error: {e}")
+                    DB_DIR = Path(__file__).parent.parent / "DB"
+                    DB_DIR.mkdir(exist_ok=True)
+                    DB_FILE = DB_DIR / "pmpermit_db.json"
+                    if DB_FILE.exists():
+                        with DB_FILE.open("r", encoding="utf-8") as f:
+                            on_disk = json.load(f)
+                        self._merge_data(on_disk)
+        except Exception as e:
+            logging.error(f"Assistant load error: {e}")
+
+    def _merge_data(self, on_disk):
+        for k, v in on_disk.items():
+            if k in ["users", "warnings", "user_states"]:
+                self.data[k] = v if isinstance(v, dict) else {}
+            elif k == "approved_users":
+                self.data[k] = v if isinstance(v, list) else []
+            elif k == "config" and isinstance(v, dict):
+                self.data["config"].update(v)
+            else:
+                self.data[k] = v
+
+    def _save_sync(self):
+        try:
+            if not USE_MONGO:
+                DB_DIR = Path(__file__).parent.parent / "DB"
+                DB_DIR.mkdir(exist_ok=True)
+                DB_FILE = DB_DIR / "pmpermit_db.json"
+                with DB_FILE.open("w", encoding="utf-8") as f:
+                    json.dump(self.data, f, indent=2, ensure_ascii=False)
+            else:
+                try:
+                    import pymongo
+                    from config.config import Config
+                    client = pymongo.MongoClient(Config.MONGO_URI)
+                    db = client.get_database('cipherelite')
+                    col = db[COLLECTION]
+                    col.update_one({"_id": COLLECTION}, {"$set": self.data}, upsert=True)
+                    client.close()
+                except Exception as e:
+                    logging.error(f"MongoDB save error: {e}")
+                    DB_DIR = Path(__file__).parent.parent / "DB"
+                    DB_DIR.mkdir(exist_ok=True)
+                    DB_FILE = DB_DIR / "pmpermit_db.json"
+                    with DB_FILE.open("w", encoding="utf-8") as f:
+                        json.dump(self.data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logging.error(f"Assistant save error: {e}")
+
+    async def send_notification(self, event, user_info, message_text):
+        try:
+            notification_text = (
+                f"📨 **New PM from Unapproved User**\n\n"
+                f"👤 **Name:** {user_info.get('name', 'Unknown')}\n"
+                f"🔗 **Username:** @{user_info.get('username', 'N/A')}\n"
+                f"🆔 **User ID:** `{user_info.get('id', 'N/A')}`\n"
+                f"⏰ **Time:** `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`\n\n"
+                f"💬 **Message:**\n```\n{message_text[:200]}\n```\n\n"
+                f"📌 **Quick Actions:**\n"
+                f"→ Reply `.a` to approve\n"
+                f"→ Reply `.da` to disapprove\n"
+                f"→ Reply `.block` to block"
+            )
+            await event.client.send_message(LOG_CHAT_ID, notification_text)
+        except Exception as e:
+            logging.error(f"Failed to send notification: {e}")
+
+    async def send_message(self, event, mtype, **kwargs):
+        try:
+            target = await event.get_sender()
+        except Exception:
+            target = event.chat_id
+
+        cfg = self.data["config"]
+        texts = {
+            "introduction": [
+                f"👋 Hi! I'm {cfg['assistant_name']}, {cfg['alive_name']}'s assistant.\n"
+                "Please explain briefly why you want to contact them.\n"
+                "Type 'ok' to acknowledge."
+            ],
+            "acknowledgment": [
+                "👍 Thanks for understanding!\n"
+                f"I will notify {cfg['alive_name']}."
+            ],
+            "warning": [
+                "⚠️ Warning {warn_count}/{max_warnings}\n"
+                "Please wait for approval before messaging again."
+            ],
+            "approved": ["✅ You are now approved! Feel free to continue."],
+            "disapproved": ["❌ Your approval has been revoked."],
+            "blocked": ["🚫 You have been blocked due to repeated messages."],
+        }
+
+        lst = texts.get(mtype, [])
+        if not lst:
+            return
+
+        msg = random.choice(lst).format(**kwargs)
+
+        try:
+            async with event.client.action(target, "typing"):
+                await asyncio.sleep(1.0)
+        except Exception:
+            pass
+
+        if mtype == "introduction" and cfg.get("use_pic"):
+            try:
+                await event.client.send_file(target, cfg["pmpermit_pic"], caption=msg)
+            except Exception:
+                await event.reply(msg)
+        else:
+            await event.reply(msg)
+
+    async def handle_message(self, event):
+        if not event.is_private:
+            return
+
+        if not self.data["config"].get("pmpermit_enabled", True):
+            return
+
+        sender = await event.get_sender()
+        uid = str(sender.id)
+
+        if sender.bot or sender.is_self or uid in self.data["approved_users"]:
+            return
+
+        text = (event.message.text or "").lower()
+
+        if uid not in self.data["users"]:
+            self.data["users"][uid] = {
+                "name": sender.first_name,
+                "username": sender.username,
+                "first_seen": datetime.now().isoformat(),
+                "id": uid,
+            }
+            self.data["user_states"][uid] = "introduced"
+
+            if uid not in self.data["warnings"]:
+                self.data["warnings"][uid] = 0
+
+            self._save_sync()
+
+            if not self.model:
+                await self.send_message(event, "introduction")
+                await self.send_notification(event, self.data["users"][uid], text or "[No text]")
+                return
+
+        self.data["warnings"].setdefault(uid, 0)
+        self.data["warnings"][uid] += 1
+
+        if self.data["warnings"][uid] >= self.data["config"]["max_warnings"]:
+            await self.send_message(event, "blocked")
+            await event.client(functions.contacts.BlockRequest(int(uid)))
+            self._save_sync()
+            return
+
+        if self.model:
+            if uid not in self.ai_sessions:
+                self.ai_sessions[uid] = self.model.start_chat(history=[])
+            try:
+                async with event.client.action(event.chat_id, "typing"):
+                    response = await self.ai_sessions[uid].send_message_async(
+                        event.message.text
+                    )
+                await event.reply(response.text)
+                
+                await self.send_notification(event, self.data["users"][uid], event.message.text or "[No text]")
+            except Exception as e:
+                logging.error(f"AI Error: {e}")
+                await event.reply("⏳ Processing... please wait for manual approval.")
+                await self.send_notification(event, self.data["users"][uid], event.message.text or "[No text]")
+        else:
+            if self.data["user_states"].get(uid) == "introduced" and text in ("ok", "okay"):
+                self.data["user_states"][uid] = "acknowledged"
+                await self.send_message(event, "acknowledgment")
+                await self.send_notification(event, self.data["users"][uid], event.message.text or "[No text]")
+                self._save_sync()
+                return
+
+            await self.send_message(
+                event,
+                "warning",
+                warn_count=self.data["warnings"][uid],
+                max_warnings=self.data["config"]["max_warnings"],
+            )
+            await self.send_notification(event, self.data["users"][uid], event.message.text or "[No text]")
+            self._save_sync()
+
+
+def init(client):
+    try:
+        from plugins.ai_setup import ai_config
+    except ImportError:
+        print("❌ ERROR: ai_setup.py not found! Please create it first.")
+        return False
+
+    assistant = PersonalAssistant(ai_config)
+    commands = [
+        ".a / .approve        — Approve a user",
+        ".da / .disapprove    — Revoke approval",
+        ".block               — Block a user",
+        ".listapproved        — List approved users",
+        ".setpermitpic        — Set the permit picture",
+        ".togglepermitpic     — Enable/disable the picture",
+        ".pmpermit on|off     — Enable/disable PM permit globally",
+    ]
+    add_handler("pmpermit", commands, "Personal Assistant PM Manager")
+
+    @CipherElite.on(events.NewMessage(incoming=True))
+    async def _incoming(event):
+        await assistant.handle_message(event)
+
+    @CipherElite.on(events.NewMessage(outgoing=True, pattern=r"\.(?:a|approve)(?:$|\s)"))
+    @rishabh()
+    async def _approve(event):
+        if event.is_private:
+            uid = str(event.chat_id)
+        else:
+            reply = await event.get_reply_message()
+            if not reply:
+                return await event.reply("↪️ Reply to the user to approve.")
+            uid = str(reply.sender_id)
+
+        if uid not in assistant.data["approved_users"]:
+            assistant.data["approved_users"].append(uid)
+        assistant.data["warnings"].pop(uid, None)
+        assistant._save_sync()
+        await assistant.send_message(event, "approved")
+
+    @CipherElite.on(events.NewMessage(outgoing=True, pattern=r"\.(?:da|disapprove)(?:$|\s)"))
+    @rishabh()
+    async def _disapprove(event):
+        if event.is_private:
+            uid = str(event.chat_id)
+        else:
+            reply = await event.get_reply_message()
+            if not reply:
+                return await event.reply("↪️ Reply to the user to disapprove.")
+            uid = str(reply.sender_id)
+
+        assistant.data["approved_users"] = [u for u in assistant.data["approved_users"] if u != uid]
+        assistant.data["warnings"][uid] = 0
+        assistant._save_sync()
+        await assistant.send_message(event, "disapproved")
+
+    @CipherElite.on(events.NewMessage(outgoing=True, pattern=r"\.listapproved$"))
+    @rishabh()
+    async def _list(event):
+        approved = assistant.data["approved_users"]
+        if not approved:
+            return await event.reply("No users are approved.")
+        text = "**Approved Users:**\n"
+        for uid in approved:
+            info = assistant.data["users"].get(uid, {})
+            name = info.get("name", "Unknown")
+            text += f"• {name} (`{uid}`)\n"
+        await event.reply(text)
+
+    @CipherElite.on(events.NewMessage(outgoing=True, pattern=r"\.setpermitpic(?:\s+.*)?$"))
+    @rishabh()
+    async def _setpic(event):
+        if event.reply_to_msg_id:
+            msg = await event.get_reply_message()
+            if msg.media:
+                path = await CipherElite.download_media(msg)
+                assistant.data["config"]["pmpermit_pic"] = path
+                assistant.data["config"]["use_pic"] = True
+                assistant._save_sync()
+                return await event.reply("✅ Permit picture set from reply")
+            return await event.reply("❌ Reply to an image.")
+        parts = event.text.split(None, 1)
+        if len(parts) > 1:
+            assistant.data["config"]["pmpermit_pic"] = parts[1].strip()
+            assistant.data["config"]["use_pic"] = True
+            assistant._save_sync()
+            return await event.reply("✅ Permit picture set from URL")
+        await event.reply("❌ Usage: .setpermitpic <url> or reply to an image")
+
+    @CipherElite.on(events.NewMessage(outgoing=True, pattern=r"\.togglepermitpic$"))
+    @rishabh()
+    async def _togglepic(event):
+        cfg = assistant.data["config"]
+        cfg["use_pic"] = not cfg.get("use_pic", True)
+        assistant._save_sync()
+        state = "enabled" if cfg["use_pic"] else "disabled"
+        await event.reply(f"✅ Permit picture {state}")
+
+    @CipherElite.on(events.NewMessage(outgoing=True, pattern=r"\.pmpermit(?:$|\s)(on|off)?"))
+    @rishabh()
+    async def _toggle_pmpermit(event):
+        arg = (event.pattern_match.group(1) or "").lower()
+        cfg = assistant.data["config"]
+
+        if arg in ("on", "off"):
+            cfg["pmpermit_enabled"] = arg == "on"
+            assistant._save_sync()
+            state = "enabled ✅" if cfg["pmpermit_enabled"] else "disabled 🚫"
+            return await event.reply(f"PM permit is now {state}")
+
+        state = "ON ✅" if cfg.get("pmpermit_enabled", True) else "OFF 🚫"
+        await event.reply(f"PM permit is currently {state}\nUsage: `.pmpermit on` or `.pmpermit off`")
+
+    @CipherElite.on(events.NewMessage(outgoing=True, pattern=r"\.block(?:$|\s)"))
+    @rishabh()
+    async def _block(event):
+        if event.is_private:
+            uid = str(event.chat_id)
+        else:
+            reply = await event.get_reply_message()
+            if not reply:
+                return await event.reply("↪️ Reply to the user to block.")
+            uid = str(reply.sender_id)
+
+        assistant.data["approved_users"] = [u for u in assistant.data["approved_users"] if u != uid]
+        assistant.data["warnings"].pop(uid, None)
+        assistant.data["user_states"].pop(uid, None)
+        assistant._save_sync()
+        await event.client(functions.contacts.BlockRequest(int(uid)))
+        await event.reply(f"🚫 User `{uid}` has been blocked.")
+
+    print(
+        f"✅ PM Permit Plugin v{VERSION} initialized (pmpermit_enabled={assistant.data['config'].get('pmpermit_enabled', True)})"
+    )
+    return assistant
