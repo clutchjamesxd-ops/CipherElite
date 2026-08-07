@@ -6,6 +6,9 @@
 #  Created:        08/08/2026
 # =============================================================================
 
+VERSION = "1.0.0"
+CATEGORY = "utilities"
+
 from telethon import events
 from telethon.tl.functions.channels import GetFullChannelRequest
 from telethon.tl.functions.phone import (
