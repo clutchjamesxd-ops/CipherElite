@@ -14,7 +14,6 @@ from telethon.tl.functions.channels import GetFullChannelRequest
 from telethon.tl.functions.phone import (
     CreateGroupCallRequest,
     DiscardGroupCallRequest,
-    GetGroupCallRequest,
     InviteToGroupCallRequest,
     JoinGroupCallRequest,
 )
@@ -27,7 +26,7 @@ def init(client_instance):
     commands = [
         ".startvc - Start a voice chat",
         ".endvc - End the voice chat in the current group",
-        ".vcinvite - Invite all members to the voice chat",
+        ".vcinvite - Invite all non-bot members to the voice chat",
         ".joinvc - Make your userbot join the active voice chat",
     ]
     description = "🎤 CipherElite Voice Chat – Full voice chat control"
@@ -35,11 +34,9 @@ def init(client_instance):
 
 
 async def get_vc_call(event):
-    """Get the current voice chat call object, or None if none exists."""
+    """Return the current voice chat call object, or None if none exists."""
     chat_full = await event.client(GetFullChannelRequest(event.chat_id))
-    if not chat_full.full_chat.call:
-        return None
-    return await event.client(GetGroupCallRequest(chat_full.full_chat.call))
+    return chat_full.full_chat.call  # This is a GroupCall object or None
 
 
 def chunk_list(lst, chunk_size):
@@ -55,13 +52,11 @@ async def register_commands():
     async def start_vc_cmd(event):
         try:
             # Check if a voice chat is already active
-            existing_call = await get_vc_call(event)
-            if existing_call:
+            if await get_vc_call(event):
                 await event.reply("🔊 **Voice chat is already active.**")
                 await event.delete()
                 return
 
-            # No active call, create one
             await event.client(CreateGroupCallRequest(event.chat_id))
             await event.reply("🔊 **Voice Chat Started Successfully**")
             await event.delete()
