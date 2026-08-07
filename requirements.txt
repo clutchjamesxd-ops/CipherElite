@@ -57,7 +57,7 @@ nest-asyncio==1.6.0
 oldpyro==0.1.0
 pillow==11.1.0
 propcache==0.2.1
-psutil==6.1.1
+psutil==7.2.2
 pyaes==1.6.1
 pyarmor==7.7.0
 pyarmor.cli.core==7.6.4
