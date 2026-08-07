@@ -28,7 +28,7 @@ def init(client_instance):
         ".endvc - End the voice chat in the current group",
         ".vcinvite - Invite all non-bot members to the voice chat",
     ]
-    description = "🎤 CipherElite Voice Chat – Control group voice chats | Created: 08/08/2026"
+    description = "🎤 CipherElite Voice Chat – Control group voice chats"
     add_handler("voice_chat", commands, description)
 
 
