@@ -2,7 +2,7 @@
 #  CipherElite Userbot Plugin
 #
 #  Plugin Name:    voice_chat
-#  Description:    Start, end, invite users, and join voice chats.
+#  Description:    Start, end, invite all members, and join voice chats.
 #  Created:        08/08/2026
 # =============================================================================
 
@@ -26,21 +26,23 @@ def init(client_instance):
     commands = [
         ".startvc - Start a voice chat",
         ".endvc - End the voice chat in the current group",
-        ".vcinvite - Invite all non-bot members to the voice chat",
+        ".vcinvite - Invite ALL members to the voice chat",
         ".joinvc - Make your userbot join the active voice chat",
     ]
-    description = "🎤 CipherElite Voice Chat – Full voice chat control"
+    description = "🎤 CipherElite Voice Chat"
     add_handler("voice_chat", commands, description)
 
 
 async def get_vc_call(event):
     """Return the current voice chat call object, or None if none exists."""
-    chat_full = await event.client(GetFullChannelRequest(event.chat_id))
-    return chat_full.full_chat.call  # This is a GroupCall object or None
+    try:
+        chat_full = await event.client(GetFullChannelRequest(event.chat_id))
+        return chat_full.full_chat.call
+    except Exception:
+        return None
 
 
 def chunk_list(lst, chunk_size):
-    """Yield successive chunk_size-sized chunks from lst."""
     for i in range(0, len(lst), chunk_size):
         yield lst[i:i + chunk_size]
 
@@ -51,7 +53,6 @@ async def register_commands():
     @rishabh()
     async def start_vc_cmd(event):
         try:
-            # Check if a voice chat is already active
             if await get_vc_call(event):
                 await event.reply("🔊 **Voice chat is already active.**")
                 await event.delete()
@@ -86,15 +87,15 @@ async def register_commands():
                 await event.reply("❌ No active voice chat found. Start one with `.startvc` first.")
                 return
 
-            status = await event.reply("🧐 Inviting users to voice chat...")
+            status = await event.reply("🧐 Inviting all members to voice chat...")
 
+            # Get ALL participants, including bots
             users = []
             async for user in event.client.iter_participants(event.chat_id):
-                if not user.bot:
-                    users.append(user.id)
+                users.append(user.id)
 
             if not users:
-                await status.edit("❌ No non-bot users found in this group.")
+                await status.edit("❌ No members found in this group.")
                 return
 
             invited_count = 0
@@ -107,7 +108,7 @@ async def register_commands():
                 except Exception:
                     pass
 
-            await status.edit(f"🚀 **Invited** `{invited_count}` **users to the voice chat.**")
+            await status.edit(f"🚀 **Invited** `{invited_count}` **members to the voice chat.**")
             await event.delete()
         except Exception as e:
             await event.reply(f"❌ **Error:** `{str(e)}`")
@@ -124,9 +125,9 @@ async def register_commands():
             await event.client(
                 JoinGroupCallRequest(
                     call=vc_call,
-                    muted=True,          # Join muted by default
-                    video_stopped=True,  # No video
-                    invite_hash=None,    # Not needed for public groups
+                    muted=True,
+                    video_stopped=True,
+                    invite_hash=None,
                 )
             )
             await event.reply("✅ **Joined the voice chat.**")
