@@ -13,7 +13,7 @@
 from telethon import TelegramClient, events, Button
 from config.config import Config
 from utils.decorators import rishabh_help
-from utils import help_ui                      # ← shared terminal-theme helpers
+from utils import help_ui
 import math
 import importlib
 from pathlib import Path
@@ -192,15 +192,17 @@ def _render_category(category):
 
 
 def _render_plugin(plugin_name):
-    names = _sorted_plugin_names()
-    try:
-        page_number = names.index(plugin_name) // PLUGINS_PER_PAGE
-    except ValueError:
-        page_number = 0
+    # BUGFIX: previously this always sent the "Back" button to the
+    # top-level category menu (help_page_X), so opening a plugin from
+    # inside a category (e.g. Animation -> Arts) and tapping Back would
+    # skip straight to the main menu instead of returning to that
+    # category's plugin list. Now it goes back to the plugin's own
+    # category instead.
+    category = get_plugin_category(plugin_name)
 
     text = help_ui.build_plugin_text(plugin_name, CMD_LIST.get(plugin_name, {}))
     buttons = [
-        [Button.inline("❮ Back to menu", f"help_page_{page_number}")],
+        [Button.inline("❮ Back to category", f"help_cat_{category}")],
         _support_row(),
     ]
     return text, buttons
