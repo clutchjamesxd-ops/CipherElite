@@ -13,7 +13,7 @@
 from telethon import TelegramClient, events, Button
 from config.config import Config
 from utils.decorators import rishabh_help
-from utils import help_ui
+from utils import help_ui                      # ← shared terminal-theme helpers
 import math
 import importlib
 from pathlib import Path
@@ -128,7 +128,7 @@ def _menu_buttons(page):
         name = CATEGORIES.get(category, {}).get("name", category.title())
         count = len(categorized[category])
         button_text = f"{icon} {name} ({count})"
-        row.append(Button.inline(button_text, f"help_cat_{category}"))
+        row.append(Button.inline(button_text, f"help_category_{category}"))
         
         if (i + 1) % 2 == 0:
             buttons.append(row)
@@ -202,7 +202,7 @@ def _render_plugin(plugin_name):
 
     text = help_ui.build_plugin_text(plugin_name, CMD_LIST.get(plugin_name, {}))
     buttons = [
-        [Button.inline("❮ Back to category", f"help_cat_{category}")],
+        [Button.inline("❮ Back to Categories", f"help_category_{category}")],
         _support_row(),
     ]
     return text, buttons
@@ -456,8 +456,8 @@ async def init_bot(user_client=None):
             return
 
         # --- CATEGORY VIEW ---
-        if data.startswith("cat_"):
-            category = data.replace("cat_", "")
+        if data.startswith("category_"):
+            category = data.replace("category_", "")
             text, buttons = _render_category(category)
             await event.edit(text, buttons=buttons, parse_mode='html')
             return
