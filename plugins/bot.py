@@ -1,19 +1,19 @@
 # =============================================================================
 #  CipherElite Userbot Plugin
 #
-#  Plugin Name:    bot
-#  Author:         CipherElite Dev (@rishabhops)
-#  Repository:     https://github.com/rishabhops/CipherElite
+#  Plugin Name:   bot
+#  Author:        CipherElite Dev (@rishabhops)
+#  Repository:    https://github.com/rishabhops/CipherElite
 #
-#  License:        MIT
+#  License:       MIT
 #
-#  Target path:    plugins/bot.py
+#  Target path:   plugins/bot.py
 # =============================================================================
 
 from telethon import TelegramClient, events, Button
 from config.config import Config
 from utils.decorators import rishabh_help
-from utils import help_ui                      # ← shared terminal-theme helpers
+from utils import help_ui                    # ← shared terminal-theme helpers
 import math
 import importlib
 from pathlib import Path
@@ -81,16 +81,10 @@ def organize_by_category():
 
 def get_help_media():
     """
-    Video/Image for the help menu header.
-    Returns the help_menu.mp4 video from resources/extras folder.
+    Video/Image URL for the help menu header.
+    Returns direct video URL to bypass uploading and speed up loading.
     """
-    try:
-        video_path = Path(__file__).parent.parent / "resources" / "extras" / "help_menu.mp4"
-        if video_path.exists():
-            return str(video_path)
-    except Exception:
-        pass
-    return None
+    return "https://www.image2url.com/r2/default/videos/1786266820943-2cc6d0a3-fee9-4644-8898-f26971c77d45.mp4"
 
 
 # =============================================================================
@@ -98,7 +92,7 @@ def get_help_media():
 # =============================================================================
 def _sorted_plugin_names():
     names = list(CMD_LIST.keys())
-    names.sort(key=lambda x: (x != 'quickhelp', x))   # quickhelp always first
+    names.sort(key=lambda x: (x != 'quickhelp', x))    # quickhelp always first
     return names
 
 
@@ -192,12 +186,6 @@ def _render_category(category):
 
 
 def _render_plugin(plugin_name):
-    # BUGFIX: previously this always sent the "Back" button to the
-    # top-level category menu (help_page_X), so opening a plugin from
-    # inside a category (e.g. Animation -> Arts) and tapping Back would
-    # skip straight to the main menu instead of returning to that
-    # category's plugin list. Now it goes back to the plugin's own
-    # category instead.
     category = get_plugin_category(plugin_name)
 
     text = help_ui.build_plugin_text(plugin_name, CMD_LIST.get(plugin_name, {}))
@@ -324,13 +312,10 @@ async def init_bot(user_client=None):
             
             if media:
                 try:
-                    # Try to upload and use the media file
-                    uploaded_file = await bot.upload_file(media)
-                    
+                    # Pass the direct URL to the builder instead of uploading
                     if media.endswith(('.mp4', '.mov', '.avi', '.mkv')):
-                        # For videos, use document
                         result = builder.document(
-                            uploaded_file,
+                            media,
                             text=text,
                             buttons=buttons,
                             parse_mode='html',
@@ -338,9 +323,8 @@ async def init_bot(user_client=None):
                             description="Video help menu"
                         )
                     else:
-                        # For images, use photo
                         result = builder.photo(
-                            uploaded_file,
+                            media,
                             text=text,
                             buttons=buttons,
                             parse_mode='html'
@@ -349,7 +333,7 @@ async def init_bot(user_client=None):
                     print(f"⚠️ Failed to load help media: {e}")
                     result = None
             
-            # Fallback to article if no media or upload failed
+            # Fallback to article if no media
             if not result:
                 result = builder.article(
                     title="Cipher Elite Help Menu",
@@ -360,7 +344,7 @@ async def init_bot(user_client=None):
             
             await event.answer([result])
         
-        # Alive customization menu (via inline query, use "alivecustom" to avoid clash with .alive command)
+        # Alive customization menu
         elif event.text == "alivecustom":
             try:
                 from plugins.alive import user_config, ALIVE_STYLES, INLINE_DATA
@@ -368,7 +352,6 @@ async def init_bot(user_client=None):
                 from telethon import version
                 from datetime import datetime
                 
-                # Generate preview text
                 uptime = "0:00:00"
                 quote = ""
                 template = ALIVE_STYLES[user_config.alive_style_index]
@@ -405,12 +388,11 @@ async def init_bot(user_client=None):
                 )
                 await event.answer([result])
         
-        # Ping customization menu (via inline query, use "pingcustom" to avoid clash with .ping command)
+        # Ping customization menu
         elif event.text == "pingcustom":
             try:
                 from plugins.alive import user_config, PING_STYLES
                 
-                # Generate preview text
                 uptime = "0:00:00"
                 speed = "0"
                 template = PING_STYLES[user_config.ping_style_index]
@@ -446,23 +428,19 @@ async def init_bot(user_client=None):
     async def callback_handler(event):
         data = event.data_match.group(1).decode()
 
-        # ⏱️ Reset the 60-second timer on every interaction
         await reset_help_timer(event, event.message_id)
 
-        # --- REOPEN (from expired state) ---
         if data == "reopen":
             text, buttons = _render_menu(0)
             await event.edit(text, buttons=buttons, parse_mode='html')
             return
 
-        # --- CATEGORY VIEW ---
         if data.startswith("category_"):
             category = data.replace("category_", "")
             text, buttons = _render_category(category)
             await event.edit(text, buttons=buttons, parse_mode='html')
             return
 
-        # --- VIEW PLUGIN DETAILS ---
         if data.startswith("plugin_"):
             plugin_name = data.replace("plugin_", "")
             if plugin_name in CMD_LIST:
@@ -470,7 +448,6 @@ async def init_bot(user_client=None):
                 await event.edit(text, buttons=buttons, parse_mode='html')
             return
 
-        # --- PAGE NAVIGATION ---
         if data.startswith("page_"):
             try:
                 page = int(data.replace("page_", ""))
@@ -527,7 +504,6 @@ async def init_bot(user_client=None):
                 await event.answer("✏️ Use .setalivetext <text> command in userbot", alert=True)
                 return
             
-            # Refresh the menu
             uptime = "0:00:00"
             quote = ""
             template = ALIVE_STYLES[user_config.alive_style_index]
@@ -598,7 +574,6 @@ async def init_bot(user_client=None):
                 await event.answer("✏️ Use .setpingtext <text> command in userbot", alert=True)
                 return
             
-            # Refresh the menu
             uptime = "0:00:00"
             speed = "0"
             template = PING_STYLES[user_config.ping_style_index]
@@ -622,7 +597,7 @@ async def init_bot(user_client=None):
             await event.answer(f"❌ Error: {e}", alert=True)
 
     # -------------------------------------------------------------------------
-    # 3. DEBUG COMMAND
+    # 5. DEBUG COMMAND
     # -------------------------------------------------------------------------
     @bot.on(events.NewMessage(pattern=r"\.debugcmds"))
     @rishabh_help()
