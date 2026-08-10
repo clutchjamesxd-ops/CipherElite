@@ -4,12 +4,10 @@
 #  Plugin Name:    catamongus
 #  Version:        1.0.0
 #  Author:         CipherElite Dev (@rishabhops)
-#  Ported from:    CatPlugins-main
 #  License:        MIT
 #
 #  Commands:       .amongus, .imposter, .imp, .impn
-#  Status:         Requires CatUserBot image resources and PIL templates.
-#                  Placeholder replies for now.
+#  Status:        
 # =============================================================================
 
 from telethon import events
