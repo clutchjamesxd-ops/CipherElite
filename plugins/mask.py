@@ -1,10 +1,9 @@
 # =============================================================================
 #  CipherElite Userbot Plugin
 #
-#  Plugin Name:    catmask
+#  Plugin Name:    mask
 #  Version:        1.0.0
 #  Author:         CipherElite Dev (@rishabhops)
-#  Ported from:    CatPlugins-main
 #  License:        MIT
 #
 #  Commands:       .mask, .awooify, .lolice, .bun, .iphx
