@@ -1,6 +1,5 @@
 # =============================================================================
 #  CipherElite Userbot Plugin
-#  Ported from CatPlugins-main
 #  License: MIT
 # =============================================================================
 
@@ -15,7 +14,7 @@ VERSION = "1.0.0"
 CATEGORY = "fun"
 
 def init(client_instance):
-    commands = [".star - Animation", ".boxs - Animation", ".rain - Animation", ".deploy - Animation", ".dump - Animation", ".fleaveme - Animation", ".loveu - Animation", ".plane - Animation", ".police - Animation", ".jio - Animation", ".solarsystem - Animation"]
+    commands = [".star - Animation", ".boxs - Animation", ".rain - Animation", ".deploy - Animation", ".dump - Animation", ".fleaveme - Animation", ".plane - Animation", ".police - Animation", ".jio - Animation", ".solarsystem - Animation"]
     description = "Animation commands from CatPlugins"
     add_handler("catanimation3", commands, description)
 
@@ -145,55 +144,8 @@ async def register_commands():
                 await event.edit(animation_chars[i % 10])
 
 
-    @CipherElite.on(events.NewMessage(pattern=r"\.loveu$"))
-    @rishabh()
-    async def _(event):
-            "animation command"
-            animation_interval = 0.5
-            animation_ttl = range(70)
-            event = await event.reply("loveu")
-            animation_chars = [
-                "😀",
-                "👩‍🎨",
-                "😁",
-                "😂",
-                "🤣",
-                "😃",
-                "😄",
-                "😅",
-                "😊",
-                "☺",
-                "🙂",
-                "🤔",
-                "🤨",
-                "😐",
-                "😑",
-                "😶",
-                "😣",
-                "😥",
-                "😮",
-                "🤐",
-                "😯",
-                "😴",
-                "😔",
-                "😕",
-                "☹",
-                "🙁",
-                "😖",
-                "😞",
-                "😟",
-                "😢",
-                "😭",
-                "🤯",
-                "💔",
-                "❤",
-                "I Love You❤",
-            ]
-            for i in animation_ttl:
-                await asyncio.sleep(animation_interval)
-                await event.edit(animation_chars[i % 35])
 
-
+  
     @CipherElite.on(events.NewMessage(pattern=r"\.plane$"))
     @rishabh()
     async def _(event):
