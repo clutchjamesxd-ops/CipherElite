@@ -1,6 +1,5 @@
 # =============================================================================
 #  CipherElite Userbot Plugin - Trolls
-#  Ported from CatUserBot (uses public nekobot API, no key needed)
 # =============================================================================
 
 import os
