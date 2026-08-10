@@ -4,7 +4,6 @@
 #  Plugin Name:    quotes
 #  Version:        1.0.0
 #  Author:         CipherElite Dev (@rishabhops)
-#  Ported from:    CatPlugins-main
 #  License:        MIT
 #
 #  Commands:       .quote <topic>
