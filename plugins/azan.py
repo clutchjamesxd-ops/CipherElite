@@ -4,7 +4,6 @@
 #  Plugin Name:    azan
 #  Version:        1.0.0
 #  Author:         CipherElite Dev (@rishabhops)
-#  Ported from:    CatPlugins-main
 #  License:        MIT
 #
 #  Command:        .azan <city>
