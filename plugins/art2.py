@@ -1,7 +1,7 @@
 # =============================================================================
 #  CipherElite Userbot Plugin
 #
-#  Plugin Name:    catart
+#  Plugin Name:    art2
 #  Version:        1.0.0
 #  Author:         CipherElite Dev (@rishabhops)
 #  License:        MIT
