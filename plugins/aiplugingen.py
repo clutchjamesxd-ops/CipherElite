@@ -2,7 +2,7 @@
 #  CipherElite Userbot Plugin
 #
 #  Plugin Name:    aiplugingen
-#  Version:        1.0.0
+#  Version:        1.1.0
 #  Author:         CipherElite Dev
 #  Target path:    plugins/aiplugingen.py
 #
@@ -14,13 +14,27 @@
 #  the SAME chat/group the command was used in, together with a summary of
 #  the commands it adds and any extra pip requirements it needs.
 #
+#  v1.1.0 changes:
+#  - The system prompt now reads plugins/README.md straight off disk on
+#    every run instead of a baked-in copy, so editing the README instantly
+#    updates what the AI is told (see the new "Telethon Import Rules"
+#    section added there).
+#  - NEW: real import validation. After generating code we actually try to
+#    import every `telethon.*` symbol the AI used against the Telethon
+#    version really installed on this server. If something doesn't exist
+#    (e.g. the AI hallucinates `from telethon.tl.types import ReportReason`,
+#    which is not a real class), we send the exact ImportError straight
+#    back to the AI and ask for a corrected file - up to 2 auto-fix rounds -
+#    before ever showing you the file.
+#
 #  IMPORTANT: this only GENERATES and UPLOADS the file for you to review.
 #  It does NOT auto-install it into plugins/ or restart the bot - always
 #  read AI-generated code before dropping it into a running userbot, since
 #  it runs with full account access.
 # =============================================================================
 
-import asyncio
+import ast
+import importlib
 import json
 import re
 import time
@@ -34,13 +48,14 @@ from utils.decorators import rishabh
 from plugins.bot import add_handler
 from config.config import Config
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 CATEGORY = "developer"
 
 OUTPUT_DIR = Path(__file__).parent.parent / "DB" / "generated_plugins"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=60)
+MAX_FIX_ATTEMPTS = 2  # how many times we let the AI self-correct bad imports
 
 # ---------------------------------------------------------------------------
 # Provider configuration - add/remove/reorder entries here to change the
@@ -101,6 +116,7 @@ PROVIDERS = [
         "models": ["copilot"],
     },
 ]
+
 
 SYSTEM_PROMPT = r"""You are the plugin-writer for the CipherElite Telegram userbot (Telethon-based).
 Follow the project's own plugin development guide EXACTLY - it is reproduced
@@ -182,6 +198,22 @@ async def register_commands():
 
 > The loader (`startup/startup.py`) does exactly this for every file in `plugins/`:
 > `module.init(client)` → `await module.register_commands()`. If either is missing/throws, only that plugin fails to load — the rest of the bot keeps running.
+
+**`CATEGORY`** — optional module-level string that groups the plugin in the `.help` category view (`plugins/bot.py` reads it, defaults to `"utilities"` if you don't set one):
+```python
+CATEGORY = "utilities"   # set once at the top of the file, alongside VERSION
+```
+
+Use one of these existing categories (don't invent new ones unless nothing below fits):
+
+| Category | For plugins that... | Example files |
+|---|---|---|
+| `admin` | Manage groups/members — bans, warns, flood control, broadcasts, greetings | `admin.py`, `antiflood.py`, `autokick.py`, `broadcast.py`, `warn.py` |
+| `animations` | Play a text/emoji animation sequence | `animation.py`, `emoji_greetings.py`, `fun_animations.py`, `Shayri.py` |
+| `developer` | Dev/ops tooling for the bot itself — installing, updating, sending on behalf of the bot | `install.py`, `send.py`, `updater.py` |
+| `fun` | Games, memes, jokes, text effects, stickers, cat/troll stuff | `games.py`, `memestext.py`, `figlet.py`, `quotes.py`, `trolls.py` |
+| `media` | Image/video/sticker generation or editing | `carbon.py`, `giftools.py`, `imagetools.py`, `stickertools.py`, `videotools.py` |
+| `utilities` | Everything else — info lookups, account tools, general commands | `alive.py`, `afk.py`, `chats.py`, `infos.py`, `stats.py`, `tools.py` |
 
 ---
 
@@ -443,10 +475,45 @@ Output rules for THIS request:
 - Output ONE self-contained file for plugins/<name>.py and NOTHING else -
   no explanations before or after, no markdown prose, just the python file
   (you may wrap it in a single ```python code block).
-- Follow every checklist item in the "Quick Checklist" section above
-  (init(), register_commands(), correct decorator, try/except, docstring
-  comments, and for inline plugins: unique INLINE_DATA keys, `if bot:`
-  guard, fallback event.reply, hide_via=True).
+- Follow every checklist item in the "Quick Checklist" section above.
+- Always set a module-level `CATEGORY = "..."` right under `VERSION`, choosing
+  the single best match from this exact set (see the "Plugin Category"
+  table above for what each one means and example files):
+  admin, animations, developer, fun, media, utilities.
+  Do NOT invent a new category name - if nothing fits well, use "utilities".
+
+Telethon import safety (Telethon==1.37.0 is what is actually installed):
+- Never import a `telethon.tl.types` / `telethon.tl.functions` / `telethon.errors`
+  symbol unless you are 100% certain it exists in Telethon 1.37.0.
+- Prefer high-level `client`/`CipherElite` methods over raw MTProto requests
+  whenever possible - they are stable across versions:
+  client.send_message, client.edit_message, client.delete_messages,
+  client.get_entity, client.kick_participant, client.edit_permissions,
+  client.download_media, client.send_file.
+- If a raw request is genuinely required, only use imports from this
+  confirmed-working list (pulled from working plugins already in this
+  codebase):
+  from telethon import events, Button, functions, types, utils, errors, version, TelegramClient
+  from telethon.errors import FloodWaitError, ChatAdminRequiredError, RPCError, UserAdminInvalidError, ChatWriteForbiddenError, UserBannedInChannelError, UserNotParticipantError, BotInlineDisabledError
+  from telethon.errors.rpcerrorlist import MessageNotModifiedError, YouBlockedUserError
+  from telethon.tl import functions, types
+  from telethon.tl.functions.channels import CreateChannelRequest, DeleteChannelRequest, EditPhotoRequest, EditTitleRequest, EditBannedRequest, GetAdminedPublicChannelsRequest, GetFullChannelRequest, GetParticipantsRequest, GetParticipantRequest, InviteToChannelRequest
+  from telethon.tl.functions.messages import ExportChatInviteRequest, CreateChatRequest, GetFullChatRequest, AddChatUserRequest, GetHistoryRequest
+  from telethon.tl.functions.photos import DeletePhotosRequest, UploadProfilePhotoRequest, GetUserPhotosRequest
+  from telethon.tl.functions.users import GetFullUserRequest
+  from telethon.tl.types import ChannelParticipantsAdmins, PeerUser, ChatBannedRights, DocumentAttributeSticker, InputStickerSetShortName, InputMediaDice, InputPhoto, MessageMediaPhoto, MessageMediaDocument, MessageEntityMention, MessageEntityMentionName, User, Chat, Channel
+  from telethon.utils import get_display_name, get_peer_id, pack_bot_file_id, get_input_location
+- If a feature (like reporting a user/message) needs a symbol NOT on that
+  list, do not guess the name - write the plugin using only high-level
+  methods, or add a short "# TODO:" comment saying the raw API name needs
+  to be verified by a human instead of importing something unconfirmed.
+- Never write `from telethon.tl.types import ReportReason` - it does not
+  exist. Telegram's report API instead takes one of
+  InputReportReasonSpam, InputReportReasonViolence, InputReportReasonPornography,
+  InputReportReasonChildAbuse, InputReportReasonOther, InputReportReasonCopyright,
+  InputReportReasonGeoIrrelevant, InputReportReasonFake, InputReportReasonIllegalDrugs,
+  InputReportReasonPersonalDetails (each is its own class under telethon.tl.types).
+
 - Never write code that mass-messages, mass-adds/invites, spams, floods,
   scrapes credentials, or otherwise abuses Telegram/third parties - refuse
   that part of a request and generate a safe stub with a comment explaining
@@ -466,7 +533,6 @@ At the very end of the file, add this metadata block as plain comments
 # (write "none" if only stdlib/telethon is needed)
 # ===================================
 """
-
 
 def _extract_code(raw: str) -> str:
     match = re.search(r"```(?:python)?\s*(.*?)```", raw, re.DOTALL)
@@ -496,7 +562,44 @@ def _extract_metadata(code: str):
         fn_match = re.search(r'add_handler\(\s*"([a-zA-Z0-9_]+)"', code)
         plugin_name = fn_match.group(1) if fn_match else f"aiplugin_{int(time.time())}"
 
-    return plugin_name, commands_block, requirements
+    cat_match = re.search(r'^CATEGORY\s*=\s*["\']([a-zA-Z_]+)["\']', code, re.MULTILINE)
+    category = cat_match.group(1) if cat_match else "utilities"
+
+    return plugin_name, commands_block, requirements, category
+
+
+def _validate_telethon_imports(code: str):
+    """Actually try every `telethon.*` import the generated code uses against
+    the REAL Telethon package installed on this server, and report anything
+    that doesn't really exist - this is exactly what catches things like
+    `from telethon.tl.types import ReportReason` before you ever see the file."""
+    problems = []
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        return [f"SyntaxError while parsing generated file: {e}"]
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("telethon"):
+            try:
+                mod = importlib.import_module(node.module)
+            except Exception as e:
+                problems.append(f"cannot import module '{node.module}': {e}")
+                continue
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                if not hasattr(mod, alias.name):
+                    problems.append(f"cannot import name '{alias.name}' from '{node.module}'")
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.startswith("telethon"):
+                    try:
+                        importlib.import_module(alias.name)
+                    except Exception as e:
+                        problems.append(f"cannot import module '{alias.name}': {e}")
+
+    return problems
 
 
 async def _call_get_query(session, base_url, model, full_prompt):
@@ -531,9 +634,9 @@ async def _call_openai_chat(session, base_url, model, system_prompt, user_prompt
         return data["choices"][0]["message"]["content"]
 
 
-async def _generate(user_prompt: str, status_cb=None):
+async def _generate(system_prompt: str, user_prompt: str, status_cb=None):
     """Try every provider/model in order, return (raw_text, provider_name, model)."""
-    combined_prompt = f"{SYSTEM_PROMPT}\n\nUser request: {user_prompt}"
+    combined_prompt = f"{system_prompt}\n\nUser request: {user_prompt}"
 
     async with aiohttp.ClientSession() as session:
         for provider in PROVIDERS:
@@ -545,7 +648,7 @@ async def _generate(user_prompt: str, status_cb=None):
                         raw = await _call_get_query(session, provider["base_url"], model, combined_prompt)
                     elif provider["type"] == "openai_chat":
                         raw = await _call_openai_chat(
-                            session, provider["base_url"], model, SYSTEM_PROMPT, user_prompt
+                            session, provider["base_url"], model, system_prompt, user_prompt
                         )
                     else:
                         continue
@@ -558,6 +661,49 @@ async def _generate(user_prompt: str, status_cb=None):
     return None, None, None
 
 
+async def _generate_with_validation(user_prompt: str, status_cb=None):
+    """Full pipeline: generate -> validate real telethon imports -> if broken,
+    send the exact error back to the AI and ask for a fix, up to
+    MAX_FIX_ATTEMPTS times. Returns (code, provider_name, model, problems)."""
+    system_prompt = SYSTEM_PROMPT
+
+    raw, provider_name, model = await _generate(system_prompt, user_prompt, status_cb)
+    if not raw:
+        return None, None, None, []
+
+    code = _extract_code(raw)
+    problems = _validate_telethon_imports(code)
+
+    attempt = 0
+    while problems and attempt < MAX_FIX_ATTEMPTS:
+        attempt += 1
+        if status_cb:
+            await status_cb(
+                f"🛠️ Found {len(problems)} bad import(s) — asking the AI to fix "
+                f"(attempt {attempt}/{MAX_FIX_ATTEMPTS})..."
+            )
+
+        fix_prompt = (
+            f"{user_prompt}\n\n"
+            "Your previous version of this file has REAL import errors when actually "
+            "tested against the Telethon library installed on the server:\n"
+            + "\n".join(f"- {p}" for p in problems)
+            + "\n\nHere is your previous code:\n```python\n"
+            + code
+            + "\n```\n\nReturn the FULL corrected file (same output rules as before), "
+            "fixing ONLY these import problems - use real Telethon symbols that "
+            "actually exist, or switch to a high-level client method instead."
+        )
+
+        raw, provider_name, model = await _generate(system_prompt, fix_prompt, status_cb)
+        if not raw:
+            break
+        code = _extract_code(raw)
+        problems = _validate_telethon_imports(code)
+
+    return code, provider_name, model, problems
+
+
 def init(client_instance):
     commands = [
         ".newplugin <describe the plugin> - AI-generate a plugin .py file and upload it here",
@@ -566,6 +712,7 @@ def init(client_instance):
         "🤖 **AI Plugin Generator**\n"
         "🧠 Describe a plugin in plain text, get a ready .py file back\n"
         "🔁 Automatically fails over across multiple AI APIs/models\n"
+        "✅ Self-checks & auto-fixes broken telethon imports before delivery\n"
         "📦 Also lists commands & pip requirements in the caption"
     )
     add_handler("aiplugingen", commands, description)
@@ -584,17 +731,20 @@ async def register_commands():
             except Exception:
                 pass
 
-        raw, provider_name, model = await _generate(user_prompt, status_cb)
+        try:
+            code, provider_name, model, problems = await _generate_with_validation(user_prompt, status_cb)
+        except Exception as e:
+            await status.edit(f"❌ **Unexpected error:** `{e}`")
+            return
 
-        if not raw:
+        if not code:
             await status.edit(
                 "❌ **Failed.** All configured AI providers/models were unreachable or errored out.\n"
                 "Check your API URLs/keys or try again later."
             )
             return
 
-        code = _extract_code(raw)
-        plugin_name, commands_block, requirements = _extract_metadata(code)
+        plugin_name, commands_block, requirements, category = _extract_metadata(code)
 
         safe_name = re.sub(r"[^a-zA-Z0-9_]", "_", plugin_name)[:40] or f"aiplugin_{int(time.time())}"
         file_path = OUTPUT_DIR / f"{safe_name}.py"
@@ -605,6 +755,7 @@ async def register_commands():
             "",
             f"🧠 **Generated by:** `{provider_name}` / `{model}`",
             f"📄 **Suggested filename:** `plugins/{safe_name}.py`",
+            f"🏷️ **Category:** `{category}`",
             "",
             "⚙️ **Commands:**",
             f"`{commands_block}`" if commands_block else "_(see file - none declared)_",
@@ -612,8 +763,19 @@ async def register_commands():
             "📦 **Extra pip requirements:**",
             ("`pip install " + " ".join(requirements) + "`") if requirements else "_None - stdlib/telethon only_",
             "",
-            "⚠️ **Review the code before adding it to `plugins/` and restarting the bot.**",
         ]
+
+        if problems:
+            caption_lines += [
+                f"⚠️ **{len(problems)} import issue(s) could NOT be auto-fixed after "
+                f"{MAX_FIX_ATTEMPTS} attempts - fix these manually before using:**",
+            ]
+            caption_lines += [f"• `{p}`" for p in problems]
+            caption_lines.append("")
+        else:
+            caption_lines.append("✅ **All `telethon.*` imports verified against the installed library.**")
+
+        caption_lines.append("⚠️ **Still review the code before adding it to `plugins/` and restarting the bot.**")
         caption = "\n".join(caption_lines)
 
         try:

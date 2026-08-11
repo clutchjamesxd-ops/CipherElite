@@ -73,6 +73,22 @@ async def register_commands():
 > The loader (`startup/startup.py`) does exactly this for every file in `plugins/`:
 > `module.init(client)` → `await module.register_commands()`. If either is missing/throws, only that plugin fails to load — the rest of the bot keeps running.
 
+**`CATEGORY`** — optional module-level string that groups the plugin in the `.help` category view (`plugins/bot.py` reads it, defaults to `"utilities"` if you don't set one):
+```python
+CATEGORY = "utilities"   # set once at the top of the file, alongside VERSION
+```
+
+Use one of these existing categories (don't invent new ones unless nothing below fits):
+
+| Category | For plugins that... | Example files |
+|---|---|---|
+| `admin` | Manage groups/members — bans, warns, flood control, broadcasts, greetings | `admin.py`, `antiflood.py`, `autokick.py`, `broadcast.py`, `warn.py` |
+| `animations` | Play a text/emoji animation sequence | `animation.py`, `emoji_greetings.py`, `fun_animations.py`, `Shayri.py` |
+| `developer` | Dev/ops tooling for the bot itself — installing, updating, sending on behalf of the bot | `install.py`, `send.py`, `updater.py` |
+| `fun` | Games, memes, jokes, text effects, stickers, cat/troll stuff | `games.py`, `memestext.py`, `figlet.py`, `quotes.py`, `trolls.py` |
+| `media` | Image/video/sticker generation or editing | `carbon.py`, `giftools.py`, `imagetools.py`, `stickertools.py`, `videotools.py` |
+| `utilities` | Everything else — info lookups, account tools, general commands | `alive.py`, `afk.py`, `chats.py`, `infos.py`, `stats.py`, `tools.py` |
+
 ---
 
 ## 2️⃣ Inline Plugin (userbot + assistant bot combo)
