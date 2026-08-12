@@ -2,7 +2,7 @@
 #  CipherElite Userbot Plugin
 #
 #  Plugin Name:    aiplugingen
-#  Version:        1.1.0
+#  Version:        1.2.0
 #  Author:         CipherElite Dev
 #  Target path:    plugins/aiplugingen.py
 #
@@ -27,6 +27,12 @@
 #    back to the AI and ask for a corrected file - up to 2 auto-fix rounds -
 #    before ever showing you the file.
 #
+#  v1.2.0 changes:
+#  - NEW: live progress bar. The status message now shows a
+#    ▰▰▰▰▰▰▱▱▱▱▱▱▱▱ NN% bar that fills up as it tries providers/models,
+#    validates imports, and runs auto-fix rounds, instead of just a plain
+#    "Trying..." line.
+#
 #  IMPORTANT: this only GENERATES and UPLOADS the file for you to review.
 #  It does NOT auto-install it into plugins/ or restart the bot - always
 #  read AI-generated code before dropping it into a running userbot, since
@@ -48,7 +54,7 @@ from utils.decorators import rishabh
 from plugins.bot import add_handler
 from config.config import Config
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 CATEGORY = "developer"
 
 OUTPUT_DIR = Path(__file__).parent.parent / "DB" / "generated_plugins"
@@ -116,6 +122,16 @@ PROVIDERS = [
         "models": ["copilot"],
     },
 ]
+
+TOTAL_MODELS = sum(len(p["models"]) for p in PROVIDERS)
+
+
+def _bar(percent) -> str:
+    """Render a simple text progress bar, e.g. '▰▰▰▰▰▰▱▱▱▱▱▱▱▱  45%'."""
+    percent = max(0, min(100, int(percent)))
+    width = 14
+    filled = round(width * percent / 100)
+    return "▰" * filled + "▱" * (width - filled) + f"  {percent}%"
 
 
 SYSTEM_PROMPT = r"""You are the plugin-writer for the CipherElite Telegram userbot (Telethon-based).
@@ -634,15 +650,22 @@ async def _call_openai_chat(session, base_url, model, system_prompt, user_prompt
         return data["choices"][0]["message"]["content"]
 
 
-async def _generate(system_prompt: str, user_prompt: str, status_cb=None):
-    """Try every provider/model in order, return (raw_text, provider_name, model)."""
+async def _generate(system_prompt: str, user_prompt: str, status_cb=None, band=(5, 55)):
+    """Try every provider/model in order, return (raw_text, provider_name, model).
+    `band` is the (start_percent, end_percent) slice of the overall progress
+    bar this call is allowed to move through, so multiple _generate() calls
+    (initial attempt + auto-fix rounds) can share one continuous bar."""
     combined_prompt = f"{system_prompt}\n\nUser request: {user_prompt}"
+    band_start, band_end = band
+    tried = 0
 
     async with aiohttp.ClientSession() as session:
         for provider in PROVIDERS:
             for model in provider["models"]:
+                tried += 1
+                pct = band_start + (band_end - band_start) * (tried / TOTAL_MODELS)
                 if status_cb:
-                    await status_cb(f"🔄 Trying `{provider['name']}` → `{model}` ...")
+                    await status_cb(f"🔄 Trying `{provider['name']}` → `{model}` ...", pct)
                 try:
                     if provider["type"] == "get_query":
                         raw = await _call_get_query(session, provider["base_url"], model, combined_prompt)
@@ -664,23 +687,43 @@ async def _generate(system_prompt: str, user_prompt: str, status_cb=None):
 async def _generate_with_validation(user_prompt: str, status_cb=None):
     """Full pipeline: generate -> validate real telethon imports -> if broken,
     send the exact error back to the AI and ask for a fix, up to
-    MAX_FIX_ATTEMPTS times. Returns (code, provider_name, model, problems)."""
+    MAX_FIX_ATTEMPTS times. Returns (code, provider_name, model, problems).
+
+    The whole pipeline is mapped onto one continuous 0-100% progress bar:
+      0-3%    prepping the request
+      3-55%   first generation attempt (across all providers/models)
+      55-62%  extracting + validating imports
+      62-90%  auto-fix rounds (split evenly across MAX_FIX_ATTEMPTS)
+      90-100% wrapping up (handled by the caller once the file is uploaded)
+    """
     system_prompt = SYSTEM_PROMPT
 
-    raw, provider_name, model = await _generate(system_prompt, user_prompt, status_cb)
+    if status_cb:
+        await status_cb("🧠 Preparing request...", 3)
+
+    raw, provider_name, model = await _generate(system_prompt, user_prompt, status_cb, band=(5, 55))
     if not raw:
         return None, None, None, []
 
+    if status_cb:
+        await status_cb("📦 Extracting generated code...", 57)
     code = _extract_code(raw)
+
+    if status_cb:
+        await status_cb("🔍 Validating telethon imports...", 60)
     problems = _validate_telethon_imports(code)
 
+    fix_span = (90 - 62) / max(MAX_FIX_ATTEMPTS, 1)
     attempt = 0
     while problems and attempt < MAX_FIX_ATTEMPTS:
+        band_start = 62 + fix_span * attempt
+        band_end = 62 + fix_span * (attempt + 1)
         attempt += 1
         if status_cb:
             await status_cb(
                 f"🛠️ Found {len(problems)} bad import(s) — asking the AI to fix "
-                f"(attempt {attempt}/{MAX_FIX_ATTEMPTS})..."
+                f"(attempt {attempt}/{MAX_FIX_ATTEMPTS})...",
+                band_start,
             )
 
         fix_prompt = (
@@ -695,10 +738,14 @@ async def _generate_with_validation(user_prompt: str, status_cb=None):
             "actually exist, or switch to a high-level client method instead."
         )
 
-        raw, provider_name, model = await _generate(system_prompt, fix_prompt, status_cb)
+        raw, provider_name, model = await _generate(
+            system_prompt, fix_prompt, status_cb, band=(band_start, band_end)
+        )
         if not raw:
             break
         code = _extract_code(raw)
+        if status_cb:
+            await status_cb("🔍 Re-validating imports...", band_end)
         problems = _validate_telethon_imports(code)
 
     return code, provider_name, model, problems
@@ -713,6 +760,7 @@ def init(client_instance):
         "🧠 Describe a plugin in plain text, get a ready .py file back\n"
         "🔁 Automatically fails over across multiple AI APIs/models\n"
         "✅ Self-checks & auto-fixes broken telethon imports before delivery\n"
+        "📊 Live progress bar while it works\n"
         "📦 Also lists commands & pip requirements in the caption"
     )
     add_handler("aiplugingen", commands, description)
@@ -723,11 +771,17 @@ async def register_commands():
     @rishabh()
     async def new_plugin(event):
         user_prompt = event.pattern_match.group(1).strip()
-        status = await event.reply("🎭 **Cipher Elite AI Plugin Generator**\n\n🔄 Starting...")
+        status = await event.reply(
+            f"🎭 **Cipher Elite AI Plugin Generator**\n\n{_bar(0)}\n🔄 Starting..."
+        )
 
-        async def status_cb(msg):
+        last_pct = {"value": 0}
+
+        async def status_cb(msg, percent=None):
             try:
-                await status.edit(msg)
+                pct = int(percent) if percent is not None else last_pct["value"]
+                last_pct["value"] = pct
+                await status.edit(f"🎭 **Cipher Elite AI Plugin Generator**\n\n{_bar(pct)}\n{msg}")
             except Exception:
                 pass
 
@@ -739,16 +793,20 @@ async def register_commands():
 
         if not code:
             await status.edit(
+                f"{_bar(0)}\n\n"
                 "❌ **Failed.** All configured AI providers/models were unreachable or errored out.\n"
                 "Check your API URLs/keys or try again later."
             )
             return
 
+        await status_cb("📝 Reading commands, category & requirements...", 93)
         plugin_name, commands_block, requirements, category = _extract_metadata(code)
 
         safe_name = re.sub(r"[^a-zA-Z0-9_]", "_", plugin_name)[:40] or f"aiplugin_{int(time.time())}"
         file_path = OUTPUT_DIR / f"{safe_name}.py"
         file_path.write_text(code, encoding="utf-8")
+
+        await status_cb("📤 Uploading file...", 97)
 
         caption_lines = [
             "🎭 **Cipher Elite - AI Generated Plugin**",
