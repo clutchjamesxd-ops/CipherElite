@@ -30,7 +30,7 @@ CMD_LIST = {}
 CATEGORIES = {
     "animations": {"icon": "🎭", "name": "Animations", "order": 1},
     "admin": {"icon": "👑", "name": "Admin", "order": 2},
-    "ai": {"icon": "🤖", "name": "Ai", "order": 3},
+    "cipher_ai": {"icon": "🤖", "name": "Ai", "order": 3},
     "developer": {"icon": "🛠", "name": "Developer", "order": 3},
     "media": {"icon": "🎬", "name": "Media", "order": 4},
     "utilities": {"icon": "⚙️", "name": "Utilities", "order": 5},
