@@ -24,7 +24,7 @@
 # =============================================================================
 
 VERSION = "2.0.0"
-CATEGORY = "ai"
+CATEGORY = "cipher_ai"
 
 import asyncio
 import time
