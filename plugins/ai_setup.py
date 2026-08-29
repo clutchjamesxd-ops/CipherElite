@@ -273,24 +273,24 @@ ai_config = AIConfigManager()
 def build_tutorial():
     rt = RichText()
     rt.bold("🔑 Cipher AI — Google Gemini API Key Setup\n\n")
-    rt.plain("Bina ek bhi rupaya kharch kiye, ")
-    rt.bold("2 minute")
-    rt.plain(" me apni free Gemini API key mil jayegi. Neeche tap karke pura step-by-step guide kholo 👇\n\n")
-
+    rt.plain("Get your own free Gemini API key in ")
+    rt.bold("under 2 minutes")
+    rt.plain(" — no payment required. Tap below to expand the full step-by-step guide 👇\n\n")
+ 
     tutorial_lines = (
         "📖 FREE GEMINI API KEY — STEP BY STEP\n\n"
-        "1️⃣  Browser me kholo → aistudio.google.com\n\n"
-        "2️⃣  Apne Google account se Sign in karo (koi bhi Gmail chalega)\n\n"
-        "3️⃣  Left sidebar me \"Get API key\" pe click karo\n\n"
-        "4️⃣  \"Create API key\" button dabao\n\n"
-        "5️⃣  Ek naya project select karo (ya \"Create in new project\" choose karo)\n\n"
-        "6️⃣  Key generate hote hi copy icon se copy kar lo — ye \"AIza...\" se start hogi\n\n"
-        "7️⃣  Wapas Telegram me aao aur type karo:\n"
-        "     .setai <apni_key_paste_karo>\n\n"
-        "💡 PRO TIP: Ek se zyada FREE keys bana sakte ho (alag Google accounts se). "
-        "Har extra key .addai se add karo — Cipher AI khud rotate karke use karega, "
-        "matlab tumhara daily free limit practically multiply ho jata hai!\n\n"
-        "⚠️ Apni key kabhi kisi ke saath share mat karo — ye tumhara private access hai.\n\n"
+        "1️⃣  Open your browser → aistudio.google.com\n\n"
+        "2️⃣  Sign in with your Google account (any Gmail works)\n\n"
+        "3️⃣  Click \"Get API key\" in the left sidebar\n\n"
+        "4️⃣  Press the \"Create API key\" button\n\n"
+        "5️⃣  Select an existing project, or choose \"Create in new project\"\n\n"
+        "6️⃣  Copy the generated key using the copy icon — it starts with \"AIza...\"\n\n"
+        "7️⃣  Come back to Telegram and type:\n"
+        "     .setai <paste_your_key_here>\n\n"
+        "💡 PRO TIP: You can create multiple FREE keys (using different Google accounts). "
+        "Add each extra key with .addai — Cipher AI will automatically rotate between them, "
+        "effectively multiplying your daily free quota!\n\n"
+        "⚠️ Never share your key with anyone — it's your private access.\n\n"
         "🔗 Direct link: https://aistudio.google.com/apikey"
     )
     rt.quote(tutorial_lines, collapsed=True)
