@@ -24,7 +24,7 @@
 # =============================================================================
 
 VERSION = "2.0.0"
-CATEGORY = "utilities"
+CATEGORY = "ai"
 
 import asyncio
 import time
