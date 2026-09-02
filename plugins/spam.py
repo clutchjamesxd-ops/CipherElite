@@ -16,7 +16,7 @@ def init(client_instance):
         ".listspam - Show all active spam operations across chats"
     ]
     
-    description = "💥 Cipher Elite Spam Engine - Advanced message spamming with military precision"
+    description = "💥 James Elite Spam Engine - Advanced message spamming with military precision"
     
     # Debug: Print what we're registering
     print("🎭 REGISTERING SPAM COMMANDS:")
@@ -105,9 +105,9 @@ async def register_commands():
             count = int(event.pattern_match.group(1))
             message_content = event.pattern_match.group(2).strip()
             
-            if count <= 0 or count > 500:
+            if count <= 0 or count > 5000:
                 await event.reply("🎭 **Cipher Elite Spam Engine**\n\n"
-                                "❌ **Invalid count!** Use 1-500\n"
+                                "❌ **Invalid count!** Use 1-5000\n"
                                 "💡 **Usage:** `.spam 10 Hello World`")
                 return
             
@@ -178,7 +178,7 @@ async def register_commands():
             delay = float(event.pattern_match.group(2))
             message_content = event.pattern_match.group(3).strip()
             
-            if count <= 0 or count > 200:
+            if count <= 0 or count > 2000:
                 await event.reply("🎭 **Cipher Elite Delay Spam Engine**\n\n"
                                 "❌ **Invalid count!** Use 1-200 for delay spam\n"
                                 "💡 **Usage:** `.dspam 10 2.5 Hello World`")
